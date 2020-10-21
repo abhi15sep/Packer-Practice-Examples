@@ -1,0 +1,71 @@
+sudo virt-install -n ubuntu-vm \ 
+ --connect qemu:///system
+ --description "Ubuntu 14.04 VM" \ 
+ --os-type=Linux \ 
+ --ram=1024 \ 
+ --vcpus=2 \ 
+ --disk path=/var/lib/libvirt/images/ubuntu-vm.img,bus=virtio,size=4 \ 
+ --graphics none \ 
+ --location /home/ubuntu/ubuntu-14.04.4-server-amd64.iso \ 
+ --extra-args='console=tty0 console=ttyS0,115200n8 serial' \
+ --network bridge:virbr0 https://www.crowdcast.io/e/AuthorCall_ITOps
+
+
+sudo vmbuilder kvm ubuntu \ 
+    --name new-ubuntu-vm 
+    --suite trusty \ 
+    --flavour virtual \ 
+    --addpkg=linux-image-generic \ 
+    --addpkg=unattended-upgrades \ 
+    --addpkg openssh-server \ 
+    --addpkg=acpid \ 
+    --arch amd64 \ 
+    --libvirt qemu:///system \ 
+    --user ubuntu \ 
+    --name mypassword \ 
+    --hostname=test \ 
+    --pass default 
+
+
+
+[DEFAULT] 
+arch = i386 
+ip = 10.0.4.100 
+part = vmbuilder.partition 
+user = ubuntu 
+name = ubuntu 
+pass = default 
+tmpfs = - 
+firstboot = boot.sh 
+firstlogin = login.sh 
+
+[ubuntu] 
+mirror = http://ca.archive.ubuntu.com/ubuntu/ 
+suite = trusty 
+flavour = virtual 
+addpkg = openssh-server, apache2, apache2-utils, apache2.2-common,libapache2-mod-php5, php5-cli, php5-gd, php5-ldap, php5-mysql, mysql-server, unattended-upgrades, acpid 
+libvirt = qemu:///system 
+
+
+sudo kvm -name "my-VM" -M pc -m 768 \ 
+-smp 2 -boot d \ 
+-drive file=/var/lib/libvirt/images/my-ub,if=virtio,index=0,media=disk,format=raw \ 
+-drive file=/home/ubuntu/ubuntu-14.04.4-server-amd64.iso,index=1,media=cdrom \ 
+-net nic,model=virtio,macaddr=52:54:00:05:11:11 \ 
+-net bridge,vlan=0,br=virbr0 \
+-vga none -balloon virtio 
+
+
+
+      <pool type="netfs"> 
+        <name>virtimages</name> 
+        <source> 
+          <host name="nfs.example.com"/> 
+          <dir path="/home/datauser/current-files"/> 
+          <format type='nfs'/> 
+        </source> 
+        <target> 
+          <path>/var/current-files</path> 
+        </target> 
+      </pool> 
+ 

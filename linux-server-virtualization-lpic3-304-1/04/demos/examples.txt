@@ -1,0 +1,39 @@
+# Configuration file for the Xen instance myNewGuest, created 
+# by xen-tools 4.4 on Mon Feb 29 14:06:24 2016. 
+#  Kernel + memory size 
+bootloader = '/usr/lib/xen-4.4/bin/pygrub' 
+
+vcpus       = '2' 
+memory      = '512' 
+
+#  Disk device(s). 
+root        = '/dev/xvda2 ro' 
+disk        = [ 
+                  'phy:/dev/vg0/myNewGuest-disk,xvda2,w', 
+                  'phy:/dev/vg0/myNewGuest-swap,xvda1,w', 
+              ] 
+#  Physical volumes 
+# 
+#  Hostname 
+# 
+name        = 'myNewGuest' 
+#  Networking 
+# 
+dhcp        = 'dhcp' 
+vif         = [ 'mac=00:16:3E:59:A0:CD' ] 
+#  Behaviour 
+# 
+on_poweroff = 'destroy' 
+on_reboot   = 'restart' 
+on_crash    = 'restart' 
+
+
+builder = "hvm" 
+name = "ubuntu-hvm" 
+memory = "2048" 
+vcpus = 1 
+vif = ['bridge=xenbr0'] 
+disk = ['phy:/dev/vg0/ubuntu-hvm,hda,w','file:/home/ubuntu/ubuntu-14.04-desktop-amd64.iso,hdc:cdrom,r'] 
+vnc = 1 
+boot="dc" 
+

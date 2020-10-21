@@ -1,0 +1,76 @@
+In this module, we're going to learn how to use what might be the most widely adopted virtual resource manager of them all: Xen. Now, while VMware's ESXi might have a reasonable claim to industry leadership at least by some metrics, the fact that Xen powers the entire AWS cloud pretty much means that - by default - it's running more VMs than anyone else...and probably more than everyone else combined.  Still, we'll leave sorting out precise market shares to the Guiness Book of World Records. But the sheer size of AWS's commitment to Xen does mean that the Xen project is the beneficiary of Amazon's oversight and patches, which are fed back into the upstream source code. This should help explain why you might want to use Xen rather than the libvirt base on which it's built: Xen - like KVM - is so heavily used in so many serious production environments, that it comes with a vast library of utilities and documentation adding enormous functionality and support.
+By the way, the fact that Xen underlies EC2 doesn't mean that you'll ever interact directly with Xen through your AWS EC2 instances: those instances are client domains whose Xen hypervisors are - or at least should be - totally invisible.
+Let's focus on building our own Xen environments. 
+As you would probably expect, Xen is installed on top of an already running Linux machine. But since, as a Type-1 hypervisor, Xen needs to load before the operating system, rather than launching it like a regular system process or service, it will run from a special boot configuration that's selected from the GRUB menu at startup. 
+Since Linux kernel 3.0 many Linux distributions now ship with full Xen kernel support and require no manual modifications to the Linux kernel. Notable exceptions to this include CentOS (which shares the Red Hat Enterprise Linux kernel). 
+Let's take a look at the Xen neighborhood.
+The Linux OS running Xen lives right on the bare metal hardware server and enjoys direct access to all hardware resources. The initial Xen domain started at boot is known as Domain 0 (or, sometimes, dom0), and it is the only domain given full system privileges. 
+The guest operating systems (VMs) created and managed by Xen are known as domU - or, Unprivileged - domains. How aware a domain is of its host hadware will depend on whether they're created with HVM or PV architectures. But in all cases, they're restricted to a very carefully defined range of resources. 
+
+Assuming that you've already enabled virtualization support at the BIOS level on the computer you're using for a server (which might appear in the BIOS menu as “Enable Virtualisation Technology” or “Enable Intel VT”), you'll need to install Linux. As you will see, I'm going to be doing all this within Oracle's VirtualBox, so it won't work exactly the way it would on a physical machine. 
+
+Wherever you choose to install Xen, though, our Linux installation should go as it normally does except for the disk partitions: you'll still create the regular partitions for root (/), swap, and /boot, which I'll demonstrate here step by step, in case you're not very familiar with the manual partition process. As you probably know, the swap partition is used for virtual memory in case we run short of actual RAM. The boot partition contains the bootloader and other files needed for the operating system to essentially load itself. We're going to place all of the actual host Linux operating system directories into the root partition. 
+But you'll also need to create an unformatted LVM partition out of the rest of the disk with no mount point. This is the space we'll later use for our guests. 
+The way I generally go about this process, I start with the smaller partitions like /boot and /swap - whose sizes I can pretty much guess (boot should be about 550 MB and swap should normally equal RAM). I will then divide the rest of my space among the remaining partitions.
+
+Once Linux is running, you will install LVM - the Logical Volume Manager - to work with this partition. 
+To prepare the disk for Xen, you can use pvcreate to configure our LVM-ready volume to store the partition's blocks (known as extents). You can check the designation your LVM partition was given, through lsblk.
+Now, apply the lvm tool, pvcreate (physical volume create) to the partition.
+Then, using vgcreate (which, of course, stands for virtual group create) you'll create a volume group called ‘vg0’ out of the LVM volume. 
+From here on in, you can use LVMs for all storage purposes on both your host and guest machines. LVM-based partitions can be divided into multiple block devices and shared among guests according to your specific needs. You should be careful to anticipate your future LVM volume demands and incorporate them into your pre-installation partition design.
+You could also store disk images to associate with guests as 'files' using raw, qcow2, or vhd formats.
+Now, what about a network? The most common way of dealing with the complexities of Xen networking involves creating a bridge device as a kind of network switch through which your guests will connect to the outside world. To do this (on Debian and Ubuntu, at least), you'll need to install the bridge-utils package, manually add a device to the interfaces file, and bring up both your main device (usually eth0) and the new bridge. 
+To create your bridge on a Debian-based system, you can edit the /etc/network/interfaces file, converting eth0 to manual and creating a new bridge called xenbr0. In this case, the Xen bridge will get its IP address from a local DHCP server. Notice how our local interface, eth0, is added to the bridge using the bridge_ports line. This will allow traffic through that interface using the same DHCP address used by the bridge - which, in most cases - will be the same IP address that our machine has been using until now.
+
+Just in case something goes wrong at this stage, make sure you've got a Plan B for getting back into your machine. 
+We're going to bring down the eth0 with its old configuration, and then bring up both xenbr0 and eth0 to restart the network: 
+Running these in a single command ensures that, even if your remote shell is closed after ifdown eth0, the correct interfaces will hopefully be brought back up again and will, eventually at least, become available. If everything worked according to plan, you should now have full network access. Worst comes to worst, you'll need to reboot the machine (hence, plan b).
+We're now finally ready to actually install Xen itself. Here's how it would go on a 64-bit computer running Ubuntu 14.04: 
+On Debian systems, this package will probably be called xen-linux-system. 
+You'll need to reboot before the Xen image is loaded. You can, by the way, closely control the parameters used by Xen as it loads by editing its GRUB menu item - or through the GRUB configuration file within the Linux filesystem. 
+Here's how that would look as it boots within my VirtualBox.
+From here on in get used to using xl, which recently replaced the older xm tool as the default Xen management shell. In case you're worried, xl commands are largely backwards compatible with xm. 
+Once you're back in your shell, you can use any xl command to confirm that Xen is behaving the way it should. 
+Our next step will be to create new guests - or domains. I'll show you how to create both ParaVirtual and HVM guests.
+
+Creating a new PV guest operating system is a two step process. You first need to generate a .cfg file, and then use the xl create command to read the file and load the guest. You could write the .cfg file by hand, but we'll install xen-tools to do it for us. 
+The xen-create-image program takes a number of parameters as input.
+
+In this case, we'll use myNewGuest as a hostname and 2048MB for memory. We'll assign our guest two virtual CPUs (vcpus), receive an IP address through an available DHCP server, control the boot process with pygrub, and - most importantly of all - use Ubuntu 14.04 (known as Trusty) as a guest operating system (dist). 
+How does xen-create know what to do with my request for a trusty distribution? Let's take a look at the /usr/share/xen-tools directory to find out. 
+These directories contain the scripts Xen needs to properly provision guest domains running any of these distribution versions. Naturally, you can manually build your own, but that's a bit beyond the scope of this course. Actually, it's way beyond the scope of this course. 
+Now we'll run xen-create-image. The process produces a .cfg file in the /etc/xen directory which, in our case, would look something like this: 
+
+Notice how the file points to the absolute location of the bootloader (pygrub) and shows us where new virtual partitions [/dev/xvda2, /dev/vg0/myNewGuest-disk] were created. 
+With the .cfg file all ready, there's nothing for us to do besides pull the trigger and launch our guest. 
+The -c argument tells Xen to open a shell in the new guest. 
+Once the instance is launched, an installation summary will be displayed in your terminal that will include the root password. 
+xl shutdown will, naturally, shut myNewGuest down. 
+
+Working with HVM guests is quite a different experience from ParaVirtual. We'll need to create our own virtual device on the vg0 volume group called, say, ubuntu-hvm. 
+Now you will download or copy an ISO image of the operating system you want to use and place it in an accessible directory. I've already copied an ISO to my user's home directory. Keeping in mind the path to the ISO, create a file called ubuntu-hvm.cfg in the /etc/xen directory and add these contents (using values that are suitable for your environment). Make sure you allocate enough memory to make your domain usable. This example associates the domain with our network bridge, installs to our vg0 partition, and points to a virtual CDRom drive containing our Ubuntu OS ISO file.
+ 
+When that's done, you can create your guest: 
+Use a local vnc viewer on your own workstation to attach to the instance and work through the installation process. 
+Just as you would remove the CDRom from the drive once your installation to a physical system is complete, you will need to remove the virtual CDRom before you can boot this guest again. Therefore, edit the "disk=" line of your .cfg file to look like this: 
+
+We've already seen how xen-tools keeps scripts for creating and running common Linux distributions in /usr/share/xen-tools. But there are some other Xen-related configuration directories and files you should know about.
+/etc/xen/ is home to the .cfg files you'll use to create your guests, along with sample guest configuration files (for both pv and hvm domains). You'll also find  the xl.conf file, and .sxp files - which are configuration files for either the xm or xend toolstack.
+The files containing user data for your guest configurations can be found in /var/lib/xen/,  /var/lib/xen-4.4 contains Xen binaries and shared libraries, and Xen logs are written to /var/log/xen.
+
+The active toolstack currently available within a Xen environment is determined by the value of the TOOLSTACK= line in the /etc/default/xen file. xm, xl, and XAPI are possible values although, as we've already seen, xm has been largely replaced by xl.
+XAPI, on the other hand, deserves some attention as, through its xe CLI, it is the main API interface to Xen resources. xe, when XAPI is installed, can be used from both domain0 and from remote hosts over https. xe's scripting capabilities make it particularly useful for integrating virtual and physical resources.
+You can run xe from a remote computer (with the xe-cli installed), where you identify the host you're trying to access - in this case, by its IP address - provide a username and password, and then the name of the command you'd like to run.
+If you've got dozens or even hundreds of VMs running, you'll need tools for keeping up with everything that's happening. Besides the Virtual Machine Manager we saw in our Libvirt module which will work for Xen resources as easily as for QEMU, you can also use xentop to display usage data on your guests much the same way that top does on normal systems.
+You can troubleshoot problems encountered during both the creation and running of guests using xl dmesg – which, again, serves a similar function as its mainstream cousin.
+xenstore-ls - based on the xenstored daemon - which maintains configuration and status data on all domains - allows domains to intelligently manage shared resources. xenstore data is accessible via its API.
+
+Migration
+Should the need arise, you can migrate a domain from one physical Xen hypervisor to another. Assuming that both the source and target servers have access to a storage device - they both use a shared network drive, for instance - you only need to run xl migrate, the name of the domain to be moved, and the path to the host. You will, however, first have to enable ssh root login by confirming that the value of PermitrootLogin in the target's /etc/ssh/sshd_config file is set to "yes". You will specify the domain you want migrated by using its Domain ID - which you can see through xl list.
+
+It's time for some review. The Xen hypervisor requires virtualization support at the BIOS level from the hardware host, and also relies heavily on LVM - the Logical Volume Manager. The LVM program, pvcreate, will create a physical volume against a partition, while vgcreate will create a volume group from your LVM volume. You can use the bridge-utils package to create a network bridge to handle connectivity for your domains. 
+Once Xen is installed, you can use the xl tool for command line management. xen-create-image - part of the xen-tools package - will, based on scripts in the /usr/share/xen-tools directory, create a configuration file for a new paravirtual domain.
+Running xl create against that file will launch the guest.
+To create an HVM guest, you'll first need to create a virtual device for it using lvcreate. You will then write your own .cfg file that points to the local ISO file of the OS you want to use. xl create will start the installation process, which you can complete using vncviewer.
+XAPI, through it's command line tool, xe, is the main Xen API, and xenstore maintains configuration and status data on all domains. Finally xl migrate allows you to move or copy domains between physical servers - one of the key benefits of virtualization.
+

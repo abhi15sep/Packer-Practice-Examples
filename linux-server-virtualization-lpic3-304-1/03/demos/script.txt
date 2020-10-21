@@ -1,0 +1,49 @@
+
+libvirt lies at the very heart of a great deal of Linux virtualization. At its core, libvirt allows virtualization management tools to securely administrate virtual machines (or "domains" as they're often called) through a software layer. While it isn't a hypervisor or standalone platform on its own, libvirt gives platforms like XEN and KVM much of their functionality. 
+Libvirt provides three ways to interact with the infrastructure on which your virtual resources rely: Hypervisor drivers, the virsh command line shell (or GUI interfaces like oVirt), and the API.
+Before I explain how each of those works, I should clarify the way things are described by many of the fine people who live in libvirt circles. A "node" is a single physical machine that's used to host a hypervisor and virtual machines (VMs). In other contexts, that might be called a "host" or simply a "server". A "hypervisor" is a software layer that can virtualize a node's resources on behalf of VMs running their own operating systems. And, as I mentioned just before, a single instance of a VM is, for some reason, always referred to as a "domain". 
+Like so much else in Linux, the real exciting bits are always plain text files. libvirt keeps its basic configuration files and scripts in the /etc/libvirt/ directory on a libvirt node (or host). 
+Much the same as with many other virtualization platforms, the file systems for each domain can be found within the libvirt directory in /var/lib on the host. You may need to become root to access these directories.
+
+Libvirt supports hypervisors through a driver-based architecture. That is, libvirt drivers written for specific hypervisor technologies will interpret incoming API calls to manage fully emulated hypervisor environments on which domain-based operating systems can launch. 
+Libvirt drivers currently exist for a wide range of environments, including Xen, QEMU, LXC, and VMWare ESX, and for storage driver backends including Logical Volume Manager (LVM), Local File System, and Network File System.
+Before I begin to actually show you how libvirt works in the real world, I should mention that, to make these demos work, I'm going to be using another venerable virtualization tool: Oracle's VirtualBox. I'm probably not showing you anything that you don't already know, but we can use VirtualBox to define our virtual machine's memory and hard drive file type - both of which will vary significantly depending on what we're trying to accomplish. Once the machine is defined, we start it up and choose a DVD disk or, more commonly these days, an ISO image. This will take us through the familiar OS installation steps. But once that's moving, we should make one change to the networking settings. By default, a VirtualBox VM is placed into a local network - usually in the 10.0.2.x range. This will allow outgoing connections, but not incoming. As you'll probably want to ssh into your new VM from the host or some other remote location, you should attach the VM to a local bridge network, allowing full connectivity. 
+You can, if necessary, compile your own libvirt build, but we'll install ours to this host node from the standard Ubuntu repositories. This is what you'll need for apt-get:
+Once you've got libvirt and a hypervisor platform up and running, you can directly control your domains either from the command line on the node itself or through a remote connection to the libvirtd daemon - which is the tool that actually manages instances and was provided as part of the qemu-kvm package we just installed. 
+You could alternatively define and create a new domain directly from the command line using virt-install followed by your domain parameters. Here's an example: 	[paste to shell; scp iso]
+Let's explain that one part at a time. 
+
+You could also create a domain by invoking its XML file using virsh create:
+Here's what an XML config file might look like:	[(taken from libvirt.org/drvqemu.html)]
+
+The function of most of the tags will be familiar to you from our virt-install example above, including name (instead of -n), source file (instead of -c), and graphics type (--graphics). 
+Once you've completed the installation process, you'll need to start your domain from the hypervisor 
+One way to get your new domain's IP address is through nmap. We'll first use ifconfig to figure out the right network - in this case, it's 192.168.122.x, and then run nmap -sn. Then we can use that address to log in using ssh.
+Assuming that the openssh-server package is installed, you can use that address to start an ssh session from anywhere on the network.
+
+You can also use virsh to edit the parameters of an XML file, but *never* in the file itself. Rather, assuming that your domain is called "my_vm", you can use virsh edit.
+...to safely modify your settings. dumpxml will properly backup your XML. 
+There are similar editing and backup tools for other libvirt XML configuration files, including virtual networks (net-edit, net-dumpxml), storage pools (pool-edit, pool-dumpxml), storage volumes (vol-edit, vol-dumpxml), and interfaces (iface-edit, iface-dumpxml). You're strongly advised to use them all.
+virsh list will list all locally running domains. 
+Note the Domain ID that's displayed and use it to directly control the domain. So, for instance, you can suspend a domain with virsh suspend, followed by the domain ID: 
+-c followed by qemu:///system will open a shell with root powers over your domain. Typing "help" gives you a menu of commands.
+Substituting "session" for "system" will log you in as a regular user for sessions where that's preferred. 
+Your average high-end sysadmin - being lazy by both nature and conviction - will likely find that that command requires just a bit too much typing, so virsh will allow you to create an alias within the libvirt.conf file in the /etc/libvirt directory. These two lines are examples provided by the documentation:
+
+You can administrate local or remote libvirt hypervisors and their domains through a GUI Firefox browser client using oVirt. At this point, only relatively recent releases of Red Hat, CentOS, Fedora, and Scientific Linux are supported as hosts so this won't work on our Ubuntu hypervisor. oVirt includes tools for automating clustering and load balancing, and has a broader range of features than the older virt-manager. But, since we can't use oVirt here anyway, we might as well take a quick look at virt-manager. 
+Once launched, I could create and manage local VMs or connect to a remote host using its DNS or IP address. Once connected, I can view connection details or perform administrative actions - including creating a new clone of an existing domain - which is one of the greatest benefits of virtualization. Think about it: rather than having to go through the whole, tedious installation process - followed by an even more tedious server setup routine - a single click or command line operation can give you as many perfect copies of your source domain as you need...wherever you need them.
+In terms of our college administration profile, we could access a template server and fire up a half a dozen of its clones to handle a few weeks of pre-exam pressures on our Moodle LMS, and kill most of them off as soon as exam week is over. A separate master copy could be cloned a few times a few weeks later to accommodate the rush of sign ups for the next semester. No one will notice that it was the exact same resources being used for both peaks.
+
+The API 
+The libvirt API is a single, common portal providing access to all libvirt hypervisor types. The fact that the API is common - meaning it's built to be platform-neutral - does mean that there are some platform-specific features that are not supported. 
+Here's a Python snippet including an API call: 
+
+To explain, you first import the libvirt module, then connect (conn) to the local QEMU hypervisor, adding its absolute address if it's a remote system. The "for" loop creates a domain object for each domain running on the node and, in sequence, suspends, resumes, and then destroys it, printing state information at every step. This, obviously, isn't something you'll necessarily want to run on a production deployment, but it illustrates the basic workings of the libvirt API. 
+Besides the hypervisor connection and domain sections, the libvirt API also provides access through network (virNetworkPtr), storage volume (virStorageVolPtr), and storage pool (virStoragePoolPtr) objects. You can also register with the API for automated notification of cluster life cycle events like domains booting, stopping, or resuming. 
+For more details, see the libvirt API documentation page: libvirt.org/html/index.html. 
+
+We'll pause for a quick review. In the world of libvirt, a node is a physical server, a hypervisor is a software layer that administrates virtual machines, and virtual machines are called domains. Libvirt configuration files and scripts are kept in the /etc/libvirt/ directory on the host and domain file systems live within /var/lib/libvirt.
+You can use libvirt to create a new domain from the command line with virt-install. the --network argument points to a network on the host machine, and --disk path tells virt-install where to create the disk image.
+virsh create will build a new domain based on an XML file you provide. Virsh can also be used to safely edit in-use XML files and for backing up configurations like the main XML, or network parameters. 
+While oVirt and virt-manager are important GUI administration tools for virtual machines, the libvirt API is probably the most efficient and most used interface tool. 
+

@@ -1,0 +1,48 @@
+	virt-install -n my_vm -r 256 
+	--disk path=/var/lib/libvirt/images/my_vm.img,bus=virtio,size=4 -c ubuntu-14.04.4-server-amd64.iso \
+	--network network=default,model=virtio \ 
+	--graphics vnc,listen=0.0.0.0 --noautoconsole -v 
+
+
+import libvirt 
+conn = libvirt.open('qemu:///system') 
+for id in conn.listDomainsID(): 
+	dom = conn.lookupByID(id) 
+	print "Dom %s  State %s" % ( dom.name(), dom.info()[0] ) 
+	dom.suspend() 
+	print "Dom %s  State %s (after suspend)" % ( dom.name(), dom.info()[0] ) 
+	dom.resume() 
+	print "Dom %s  State %s (after resume)" % ( dom.name(), dom.info()[0] ) 
+	dom.destroy() 
+
+
+my_vm.xml
+---------
+
+<domain type='qemu'> 
+  <name>QEmu-fedora-i686</name> 
+  <uuid>c7a5fdbd-cdaf-9455-926a-d65c16db1809</uuid> 
+  <memory>219200</memory> 
+  <currentMemory>219200</currentMemory> 
+  <vcpu>2</vcpu> 
+  <os> 
+    <type arch='i686' machine='pc'>hvm</type> 
+    <boot dev='cdrom'/> 
+  </os> 
+  <devices> 
+    <emulator>/usr/bin/qemu-system-x86_64</emulator> 
+    <disk type='file' device='cdrom'> 
+      <source file='/home/user/boot.iso'/> 
+      <target dev='hdc'/> 
+      <readonly/> 
+    </disk> 
+    <disk type='file' device='disk'> 
+      <source file='/home/user/fedora.img'/> 
+      <target dev='hda'/> 
+    </disk> 
+    <interface type='network'> 
+      <source network='default'/> 
+    </interface> 
+    <graphics type='vnc' port='-1'/> 
+  </devices> 
+</domain>
